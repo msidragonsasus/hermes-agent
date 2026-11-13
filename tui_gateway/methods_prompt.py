@@ -808,13 +808,9 @@ def _lock_in_submit_turn(
     return None, fields
 
 
-# Per-turn client surfaces that carry a model-bound note (session_notifications._hud_surface_note);
-# the canonical admission path shares the same set (gateway.session_surface).
-from gateway.session_surface import SURFACES as _CLIENT_SURFACES
-
-
 @method("prompt.submit")
 def _(rid, params: dict) -> dict:
+    from gateway.session_surface import is_client_surface
     from hermes_cli.input_sanitize import sanitize_user_prompt_text
     sid = params.get("session_id", "")
     raw_text = params.get("text", "")
@@ -857,7 +853,8 @@ def _(rid, params: dict) -> dict:
         # leaves the session untouched.  The reason travels as machine-readable data.
         return _slot_refusal(rid, sid, session, text, params, limit_message, internal_hosted_submit)
     # Rewritten every submit: a session alternates app window / HUD / live voice; a stale value misinforms.
-    session["client_surface"] = params.get("surface") if params.get("surface") in _CLIENT_SURFACES else ""
+    with _session_profile_runtime_scope(session):
+        session["client_surface"] = params.get("surface") if is_client_surface(params.get("surface")) else ""
     # Live-voice delegations carry the recent spoken transcript for the MODEL INPUT only (the persisted
     # user row stays the words the user said); anything else clears it.
     voice_context = params.get("voice_context")

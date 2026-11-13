@@ -1111,7 +1111,7 @@
         {
           "name": "params",
           "schema": {
-            "$ref": "#/components/schemas/PingParams"
+            "$ref": "#/components/schemas/GatewayCapabilitiesParams"
           }
         }
       ],
@@ -18747,16 +18747,43 @@
         "title": "FreeTierStatusResult",
         "type": "object"
       },
+      "GatewayCapabilitiesParams": {
+        "additionalProperties": false,
+        "properties": {
+          "profile": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Profile"
+          }
+        },
+        "title": "GatewayCapabilitiesParams",
+        "type": "object"
+      },
       "GatewayCapabilitiesResult": {
         "additionalProperties": false,
         "properties": {
           "per_session_exclusive_submit": {
             "title": "Per Session Exclusive Submit",
             "type": "boolean"
+          },
+          "client_surfaces": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Client Surfaces",
+            "type": "array"
           }
         },
         "required": [
-          "per_session_exclusive_submit"
+          "per_session_exclusive_submit",
+          "client_surfaces"
         ],
         "title": "GatewayCapabilitiesResult",
         "type": "object"

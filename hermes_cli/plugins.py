@@ -977,6 +977,20 @@ class PluginContext:
                                     section, "Plugin %s registered system prompt section: %s", id,
                                     previous=existing)
 
+    @_serialized_replacement
+    def register_client_surface(self, name: str, note: str | Callable) -> PluginRegistration:
+        """Register a per-turn display note, bounded to 6000 characters, in this profile.
+
+        Callbacks receive (committed, valid_tool_names). They grant no tool authority;
+        failures omit the note. Unload/reload releases the name through the ownership ledger.
+        """
+        from gateway.session_surface import register_surface
+        if not isinstance(note, str) and not callable(note):
+            raise TypeError('surface note must be a string or callable')
+        render = (lambda committed, valid_tool_names: note) if isinstance(note, str) else note
+        release = register_surface(name, render, manager=self._manager)
+        return self._track('client_surface', name, release)
+
     def emit(self, event: str, payload: Optional[dict] = None) -> int:
         """Publish bare *event* as ``<plugin_key>:<event>`` (namespace FORCED to this plugin); return
         the subscriber count scheduled. Any ``':'`` in the name (``hermes:x`` is reserved for core,
@@ -1182,6 +1196,7 @@ class PluginManager(PluginLoaderMixin, PluginDispatchMixin, PluginLedgerMixin):
         self._cli_commands: dict[str, dict] = {}
         self._plugin_commands: dict[str, dict] = {}
         self._system_prompt_sections: dict[str, PluginSystemPromptSection] = {}
+        self._client_surfaces: dict[str, Callable] = {}
         self._plugin_skills: dict[str, dict[str, Any]] = {}
         self._automation_blueprints: dict[str, Any] = {}  # "<plugin>:<key>" -> AutomationBlueprint
         self._portable_mcp_servers: dict[str, dict[str, Any]] = {}

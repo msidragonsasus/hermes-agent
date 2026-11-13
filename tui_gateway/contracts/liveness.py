@@ -20,9 +20,14 @@ method("ping", params=PingParams, result=PingResult,
 
 class GatewayCapabilitiesResult(Result):
     per_session_exclusive_submit: bool
+    client_surfaces: list[str]
 
 
-method("gateway.capabilities", params=PingParams, result=GatewayCapabilitiesResult,
+class GatewayCapabilitiesParams(Params):
+    profile: str | None = None
+
+
+method("gateway.capabilities", params=GatewayCapabilitiesParams, result=GatewayCapabilitiesResult,
        doc="What THIS build enforces (a client withholds a feature unless advertised).")
 
 

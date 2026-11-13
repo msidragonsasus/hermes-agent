@@ -511,11 +511,14 @@ def _wake_detect_handler(transport, sid: str, phrase: str, new_session: bool):
 
 
 @method("gateway.capabilities")
+@_profile_scoped
 def _(rid, params: dict) -> dict:
     """What THIS BUILD enforces (a client withholds unless advertised), sourced from the enforcing
     module, never config: a believed-but-absent capability is worse."""
     from hermes_cli.active_sessions import PER_SESSION_EXCLUSIVE_SUBMIT
-    return _ok(rid, {"per_session_exclusive_submit": bool(PER_SESSION_EXCLUSIVE_SUBMIT)})
+    from gateway.session_surface import client_surfaces
+    return _ok(rid, {"per_session_exclusive_submit": bool(PER_SESSION_EXCLUSIVE_SUBMIT),
+                     "client_surfaces": client_surfaces()})
 
 
 @method("client.capabilities")
