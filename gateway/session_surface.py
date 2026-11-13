@@ -7,6 +7,9 @@ persisted user row stays the words the user typed and the frozen system prefix i
 """
 from contextlib import contextmanager
 from contextvars import ContextVar
+import logging
+import re
+from threading import RLock
 
 from hermes_state_runtime import RuntimeStoreError
 
@@ -14,6 +17,47 @@ SURFACES = frozenset({'hud', 'voice-live'})
 _VOICE_CONTEXT_LIMIT = 6000
 _SUBMIT_FIELDS = ('surface', 'voice_context', 'interrupted', 'voice_turn')
 _surface_turn = ContextVar('surface_turn', default=None)
+_registry_lock = RLock()
+logger = logging.getLogger(__name__)
+
+
+def _registered_surfaces():
+    # Admission and managed workers can reach this before model_tools imports plugins.
+    from hermes_cli.plugins import _ensure_plugins_discovered
+    return _ensure_plugins_discovered()._client_surfaces
+
+
+def register_surface(name, note_fn, *, manager=None):
+    """Register a profile-local renderer; return its identity-checked release callback."""
+    if not isinstance(name, str) or re.fullmatch(r'[a-z][a-z0-9-]{0,31}', name) is None:
+        raise ValueError('surface name must match [a-z][a-z0-9-]{0,31}')
+    if not callable(note_fn):
+        raise TypeError('surface note must be callable')
+    if manager is None:
+        from hermes_cli.plugins import get_plugin_manager
+        manager = get_plugin_manager()
+    registry = manager._client_surfaces
+    with _registry_lock:
+        if name in SURFACES or name in registry:
+            raise ValueError(f'surface {name!r} is already registered')
+        registry[name] = note_fn
+
+    def release():
+        with _registry_lock:
+            if registry.get(name) is note_fn:
+                del registry[name]
+    return release
+
+
+def client_surfaces():
+    """The current profile's advertised built-in and plugin surface names."""
+    registry = _registered_surfaces()
+    with _registry_lock:
+        return sorted(SURFACES | registry.keys())
+
+
+def is_client_surface(name):
+    return isinstance(name, str) and (name in SURFACES or name in _registered_surfaces())
 
 
 def submit_surface_fields(params):
@@ -25,7 +69,7 @@ def admit_surface(params):
     """Wire ``surface`` / ``voice_context`` / ``interrupted`` / ``voice_turn`` -> committed ``surface_v1``
     (``{}`` when absent). ``voice_turn`` marks a spoken voice-mode turn: it runs on ``auxiliary.voice_chat``."""
     surface, context, interrupted, voice_turn = (params.get(key) for key in _SUBMIT_FIELDS)
-    if surface is not None and surface not in SURFACES:
+    if surface is not None and not is_client_surface(surface):
         raise RuntimeStoreError('invalid_params')
     # The spoken transcript only makes sense for a live-voice delegation; anywhere else it is
     # a client smuggling model input past the persisted row.
@@ -77,7 +121,23 @@ def surface_note(committed, valid_tool_names=None):
     render = _SURFACE_NOTES.get(committed.get('surface'))
     if render is not None:
         notes.append(render(committed, valid_tool_names))
+    elif committed.get('surface'):
+        notes.append(_plugin_surface_note(committed, valid_tool_names))
     return '\n\n'.join(note for note in notes if note)
+
+
+def _plugin_surface_note(committed, valid_tool_names):
+    render = _registered_surfaces().get(committed['surface'])
+    if render is None:
+        return ''
+    try:
+        note = render(dict(committed), valid_tool_names)
+        if not isinstance(note, str):
+            raise TypeError('surface note must return a string')
+        return note[:_VOICE_CONTEXT_LIMIT]
+    except Exception:
+        logger.exception('Client surface %s note failed', committed['surface'])
+        return ''
 
 
 @contextmanager
